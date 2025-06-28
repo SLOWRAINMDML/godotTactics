@@ -1,0 +1,217 @@
+[gd_scene load_steps=3 format=3 uid="uid://b8r2w2xkkb32v"]
+
+[ext_resource type="Script" uid="uid://d3644kpa8t3fi" path="res://scenes/BattleScene.gd" id="1_0w3p8"]
+[ext_resource type="Script" uid="uid://dn7i07ren22qn" path="res://scenes/BattleGrid.gd" id="2_m8xr2"]
+
+[node name="BattleScene" type="Node2D"]
+script = ExtResource("1_0w3p8")
+
+[node name="BattleGrid" type="Node2D" parent="."]
+script = ExtResource("2_m8xr2")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+zoom = Vector2(0.8, 0.8)
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="TurnInfo" type="Control" parent="UI"]
+layout_mode = 3
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -200.0
+offset_bottom = 100.0
+grow_horizontal = 0
+
+[node name="TurnLabel" type="Label" parent="UI/TurnInfo"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -150.0
+offset_bottom = 30.0
+grow_horizontal = 0
+text = "플레이어 턴"
+horizontal_alignment = 2
+
+[node name="TurnCounter" type="Label" parent="UI/TurnInfo"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -150.0
+offset_top = 30.0
+offset_bottom = 60.0
+grow_horizontal = 0
+text = "턴: 1"
+horizontal_alignment = 2
+
+[node name="ActionPanel" type="Control" parent="UI"]
+layout_mode = 3
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -150.0
+offset_top = -100.0
+offset_right = 150.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="MoveButton" type="Button" parent="UI/ActionPanel"]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = -40.0
+offset_right = 60.0
+grow_vertical = 0
+text = "이동"
+
+[node name="AttackButton" type="Button" parent="UI/ActionPanel"]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 70.0
+offset_top = -40.0
+offset_right = 120.0
+grow_vertical = 0
+text = "공격"
+
+[node name="SkillButton" type="Button" parent="UI/ActionPanel"]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 130.0
+offset_top = -40.0
+offset_right = 180.0
+grow_vertical = 0
+text = "스킬"
+
+[node name="EndTurnButton" type="Button" parent="UI/ActionPanel"]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 190.0
+offset_top = -40.0
+offset_right = 260.0
+grow_vertical = 0
+text = "턴 종료"
+
+[node name="CharacterInfo" type="Control" parent="UI"]
+layout_mode = 3
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_top = -250.0
+offset_right = 300.0
+grow_vertical = 0
+
+[node name="NameLabel" type="Label" parent="UI/CharacterInfo"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 25.0
+offset_bottom = 45.0
+grow_horizontal = 2
+text = "클래스: 없음"
+
+[node name="LevelLabel" type="Label" parent="UI/CharacterInfo"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 45.0
+offset_bottom = 65.0
+grow_horizontal = 2
+text = "레벨: 1"
+
+[node name="HPBar" type="ProgressBar" parent="UI/CharacterInfo"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 70.0
+offset_bottom = 90.0
+grow_horizontal = 2
+value = 100.0
+
+[node name="MPBar" type="ProgressBar" parent="UI/CharacterInfo"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 95.0
+offset_bottom = 115.0
+grow_horizontal = 2
+value = 100.0
+
+[node name="StatsLabel" type="Label" parent="UI/CharacterInfo"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 125.0
+offset_bottom = 145.0
+grow_horizontal = 2
+text = "== 스탯 =="
+horizontal_alignment = 1
+
+[node name="StrLabel" type="Label" parent="UI/CharacterInfo"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 145.0
+offset_bottom = 160.0
+grow_horizontal = 2
+text = "STR: 0"
+
+[node name="DefLabel" type="Label" parent="UI/CharacterInfo"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 160.0
+offset_bottom = 175.0
+grow_horizontal = 2
+text = "DEF: 0"
+
+[node name="DexLabel" type="Label" parent="UI/CharacterInfo"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 175.0
+offset_bottom = 190.0
+grow_horizontal = 2
+text = "DEX: 0"
+
+[node name="AgiLabel" type="Label" parent="UI/CharacterInfo"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 190.0
+offset_bottom = 205.0
+grow_horizontal = 2
+text = "AGI: 0"
+
+[node name="IntLabel" type="Label" parent="UI/CharacterInfo"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 205.0
+offset_bottom = 220.0
+grow_horizontal = 2
+text = "INT: 0"
+
+[node name="ResLabel" type="Label" parent="UI/CharacterInfo"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 220.0
+offset_bottom = 235.0
+grow_horizontal = 2
+text = "RES: 0"
+
+[node name="Characters" type="Node2D" parent="."]
+
+[connection signal="pressed" from="UI/ActionPanel/EndTurnButton" to="." method="_on_end_turn_button_pressed"]
