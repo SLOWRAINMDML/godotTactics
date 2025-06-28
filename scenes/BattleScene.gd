@@ -148,28 +148,8 @@ func start_test_battle():
 	
 	GameManager.start_battle(player_data, enemy_data)
 	
-	# 첫 번째 플레이어 캐릭터 선택 - 완전히 초기화한 후 선택
-	if player_characters.size() > 0:
-		print("첫 번째 캐릭터 자동 선택: ", player_characters[0].character_name)
-		# 기존 선택 표시가 있을 수 있으므로 모든 캐릭터에서 제거
-		for character in all_characters:
-			var selection_ring = character.get_node_or_null("SelectionRing")
-			if selection_ring:
-				selection_ring.queue_free()
-			var arrow = character.get_node_or_null("SelectionArrow")
-			if arrow:
-				arrow.queue_free()
-		
-		# 상태 초기화
-		selected_character = null
-		clear_highlights()
-		
-		# 한 프레임 기다린 후 새로운 캐릭터 선택
-		await get_tree().process_frame
-		select_character(player_characters[0])
-	
-	# UI 초기 업데이트
-	await get_tree().process_frame  # 한 프레임 대기
+	# UI 초기 업데이트 (선택된 캐릭터가 없으므로 빈 상태로 업데이트)
+	await get_tree().process_frame
 	update_character_info()
 	
 	# 카메라 조작 안내 추가
