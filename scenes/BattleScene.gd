@@ -263,16 +263,17 @@ func create_character_instance(data: Dictionary, is_player: bool) -> Character:
 	
 	# 그리드 위치에 배치 (높이 반영)
 	var grid_pos = data["position"]
-	var world_pos = Vector2(grid_pos.x * 70, grid_pos.y * 35)
+	var world_pos = battle_grid.grid_to_world(grid_pos)
 	
 	# 높이 반영 (BattleGrid에서 높이 데이터 가져오기)
 	var height = 0
 	if battle_grid and battle_grid.has_method("get_height_at_position"):
 		height = battle_grid.get_height_at_position(grid_pos)
 	
-	# 높이만큼 위로 올리기
-	world_pos.y -= height * 15
-	character.position = world_pos
+	# BattleGrid의 위치를 더해주고, 높이만큼 위로 올리기
+	var final_pos = battle_grid.position + world_pos
+	final_pos.y -= height * 15
+	character.position = final_pos
 	
 	# 이소메트릭 캐릭터 시각적 표현
 	create_isometric_character_visual(character, is_player, data)

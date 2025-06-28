@@ -276,8 +276,6 @@ func move_to(new_position: Vector2i, battle_grid) -> bool:
 		return false
 	
 	var reachable_tiles = battle_grid.get_reachable_tiles(grid_position, move_range)
-	print("이동 가능한 타일들: ", reachable_tiles)
-	print("이동 범위: ", move_range)
 	
 	if not new_position in reachable_tiles:
 		print("이동할 수 없는 위치입니다! ", new_position, " not in ", reachable_tiles)
@@ -289,8 +287,12 @@ func move_to(new_position: Vector2i, battle_grid) -> bool:
 	
 	# 시각적 이동 (높이 고려)
 	var world_pos = battle_grid.grid_to_world(grid_position)
-	var height = battle_grid.height_data.get(grid_position, 0)
-	position = world_pos + Vector2(0, -height * 8)  # 높이만큼 위로
+	var height = battle_grid.get_height_at_position(grid_position)
+	
+	var final_pos = battle_grid.position + world_pos
+	final_pos.y -= height * 15
+	position = final_pos
+	
 	print("새로운 월드 위치: ", position, " (높이: ", height, ")")
 	
 	print(character_name, "이(가) ", old_position, "에서 ", new_position, "로 이동했습니다.")
