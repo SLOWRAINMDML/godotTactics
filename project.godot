@@ -6,21 +6,75 @@
 ;   [section] ; section goes between []
 ;   param=value ; assign values to parameters
 
+; -----------------------------------------------------------------------------
+; [후임자를 위한 안내]
+;
+; 이 파일은 Godot 엔진 프로젝트의 모든 설정을 담고 있는 핵심 파일입니다.
+; 에디터의 '프로젝트 > 프로젝트 설정' 메뉴에서 변경하는 내용들이 여기에 저장됩니다.
+; 직접 수정하기보다는 에디터를 통해 설정하는 것이 안전하지만,
+; 각 항목이 어떤 의미를 갖는지 이해하면 프로젝트의 전체 구조를 파악하는 데 큰 도움이 됩니다.
+;
+; Godot 엔진 학습을 위한 팁:
+; - 공식 문서 (https://docs.godotengine.org) 가 가장 좋은 학습 자료입니다.
+; - GDScript는 Python과 유사하여 배우기 쉽습니다. GDScript 기초부터 시작해 보세요.
+; - Godot의 핵심 개념인 '노드(Node)'와 '씬(Scene)'의 개념을 이해하는 것이 중요합니다.
+; -----------------------------------------------------------------------------
+
 config_version=5
 
 [application]
 
+; [애플리케이션 설정]
+; 이 섹션에서는 게임의 이름, 시작 씬, 아이콘 등 기본적인 정보를 설정합니다.
+
 config/name="Tactics"
+; "프로젝트 > 프로젝트 설정 > Application > Config > 이름"에 해당합니다.
+; 게임 창의 제목이나 애플리케이션 이름으로 사용됩니다.
+
 run/main_scene="res://scenes/BattleScene.tscn"
+; "프로젝트 > 프로젝트 설정 > Application > Run > 메인 씬"에 해당합니다.
+; 게임을 시작할 때 가장 먼저 실행될 씬(.tscn 파일)을 지정합니다.
+; 현재 우리 프로젝트는 'BattleScene'으로 바로 진입하여 테스트합니다.
+
 config/features=PackedStringArray("4.4", "GL Compatibility")
+; 프로젝트가 사용하는 Godot 엔진 버전과 렌더링 방식을 정의합니다.
+; "GL Compatibility"는 OpenGL 호환 렌더러를 사용한다는 의미로,
+; 다양한 하드웨어에서 안정적으로 실행되도록 하는 데 중점을 둡니다.
+
 config/icon="res://icon.svg"
+; 게임의 아이콘으로 사용될 이미지 파일의 경로입니다.
 
 [autoload]
 
+; [오토로드 / 싱글톤 설정]
+; 이 섹션은 Godot의 강력한 기능 중 하나인 '싱글톤(Singleton)'을 설정하는 곳입니다.
+; 여기에 등록된 스크립트(.gd)는 프로젝트 전체에서 항상 접근 가능한 전역 객체가 됩니다.
+; 즉, 어떤 씬이나 스크립트에서도 `GameManager.함수()` 와 같이 직접 호출할 수 있습니다.
+;
+; 이는 게임의 전체 상태 관리, 공용 데이터 저장 등 여러 씬에 걸쳐 공유되어야 하는
+; 기능을 구현하는 데 매우 유용합니다.
+; "프로젝트 > 프로젝트 설정 > Autoload" 탭에서 관리할 수 있습니다.
+
 GameData="*res://scripts/GameData.gd"
+; 'GameData'라는 이름으로 'GameData.gd' 스크립트를 싱글톤으로 등록합니다.
+; 이 스크립트는 게임의 모든 정적 데이터(클래스, 스킬, 지형 정보 등)를 담고 있습니다.
+; 코드 내에서 `GameData.CLASSES` 와 같은 형태로 데이터에 접근할 수 있습니다.
+
 GameManager="*res://scripts/GameManager.gd"
+; 'GameManager'라는 이름으로 'GameManager.gd' 스크립트를 싱글톤으로 등록합니다.
+; 이 스크립트는 게임의 전체적인 흐름(턴 관리, 전투 상태 등)을 제어합니다.
+; 코드 내에서 `GameManager.next_turn()` 과 같이 게임 상태를 변경하는 함수를 호출할 수 있습니다.
 
 [rendering]
 
+; [렌더링 설정]
+; 게임의 그래픽 처리 방식을 설정합니다.
+
 renderer/rendering_method="gl_compatibility"
+; 데스크탑 환경에서의 렌더링 방식으로 'GL Compatibility'를 사용합니다.
+; 이는 OpenGL 3.3 / OpenGL ES 3.0 / WebGL 2.0을 지원하며,
+; 최신 그래픽 기능보다는 넓은 호환성에 중점을 둡니다. 2D 게임에 적합합니다.
+
 renderer/rendering_method.mobile="gl_compatibility"
+; 모바일 환경에서도 동일하게 'GL Compatibility' 렌더러를 사용하도록 설정합니다.
+; 이를 통해 데스크탑과 모바일에서 일관된 그래픽 표현을 보장합니다.
