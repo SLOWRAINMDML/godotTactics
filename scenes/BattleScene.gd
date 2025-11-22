@@ -33,13 +33,20 @@ var tile_coord_label: Label
 var tile_terrain_label: Label
 var tile_height_label: Label
 
+# 행동 순서 UI
+var turn_order_panel: Panel
+var turn_order_vbox: VBoxContainer
+var final_turn_order: Array
+
 # 게임 상태
 var player_characters: Array = []
 var enemy_characters: Array = []
 var all_characters: Array = []
-var selected_character: Character = null
+var selected_character: Character = null # 정보창에 표시될 캐릭터
+var current_turn_character: Character = null # 턴의 주인공
 var current_action_mode: String = "none"  # none, move, attack, skill
 var highlighted_tiles: Array = []
+var previous_selection: Character = null # 시각 효과 제어용
 
 # 액션 모드
 enum ActionMode {
@@ -65,8 +72,9 @@ var edge_scroll_speed: float = 400.0  # 가장자리 스크롤 속도
 func _ready():
 	print("BattleScene 초기화 시작")
 	
-	# 타일 정보 UI 생성
+	# UI 생성
 	setup_tile_info_ui()
+	setup_turn_order_ui()
 	
 	# 신호 연결
 	connect_signals()
@@ -89,29 +97,31 @@ func _input(event):
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			zoom_camera(1.0 - camera_zoom_speed)
 			return
-	
-	# 마우스 클릭 처리
+			
+	# 마우스 클릭으로 캐릭터 정보 보기
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var mouse_pos = get_global_mouse_position()
-		print("BattleScene _input 호출됨: ", mouse_pos)
-		print("현재 액션 모드: ", ActionMode.keys()[action_mode])
-		
-		# 현재 액션 모드가 NONE일 때만 캐릭터 선택 처리
-		if action_mode == ActionMode.NONE:
-			if handle_character_selection(mouse_pos):
-				# 캐릭터 선택 성공시 이벤트 소비
-				print("캐릭터 선택 성공 - 이벤트 소비")
+		var clicked_on_character = false
+		for character in all_characters:
+			var char_rect = Rect2(character.global_position - Vector2(16, 16), Vector2(32, 32))
+			if char_rect.has_point(mouse_pos):
+				print("정보 보기 위해 클릭: ", character.character_name)
+				select_character_for_display(character)
+				clicked_on_character = true
 				get_viewport().set_input_as_handled()
-				return
-		else:
-			print("액션 모드가 NONE이 아님 - 캐릭터 선택 처리 안 함")
+				break
+		# 캐릭터를 클릭하지 않았을 때만 타일 클릭 로직 실행
+		if not clicked_on_character:
+			# 타일 클릭 이벤트는 BattleGrid에서 신호로 처리됨
+			pass
 
 func _process(delta):
 	handle_camera_movement(delta)
 
 func connect_signals():
 	# GameManager 신호 연결
-	GameManager.turn_changed.connect(_on_turn_changed)
+	GameManager.turn_order_updated.connect(_on_turn_order_updated)
+	GameManager.turn_advanced.connect(_on_turn_advanced)
 	GameManager.battle_started.connect(_on_battle_started)
 	GameManager.battle_ended.connect(_on_battle_ended)
 	
@@ -136,21 +146,13 @@ func start_test_battle():
 	# 테스트용 캐릭터 생성
 	create_test_characters()
 	
-	# GameManager에 전투 시작 알림
-	var player_data = []
-	var enemy_data = []
-	
-	for character in player_characters:
-		player_data.append(character_to_data(character))
-	
-	for character in enemy_characters:
-		enemy_data.append(character_to_data(character))
-	
-	GameManager.start_battle(player_data, enemy_data)
+	# GameManager에 전투 시작 알림 (캐릭터 노드 자체를 전달)
+	GameManager.start_battle(all_characters)
 	
 	# UI 초기 업데이트 (선택된 캐릭터가 없으므로 빈 상태로 업데이트)
 	await get_tree().process_frame
-	update_character_info()
+	update_character_info_display(null)
+	update_action_buttons()
 	
 	# 카메라 조작 안내 추가
 	create_camera_instructions()
@@ -480,110 +482,73 @@ E 키: 가장자리 스크롤 토글
 	instructions_panel.add_child(instructions_label)
 	ui_node.add_child(instructions_panel)
 
-func handle_character_selection(mouse_pos: Vector2) -> bool:
-	print("캐릭터 선택 처리: ", mouse_pos)
-	
-	# 모든 캐릭터를 확인하여 클릭된 캐릭터 찾기
-	for character in all_characters:
-		if character.is_player_controlled:  # 플레이어 캐릭터만 선택 가능
-			print("캐릭터 확인: ", character.character_name, " 위치: ", character.global_position)
-			var char_rect = Rect2(character.global_position - Vector2(16, 16), Vector2(32, 32))
-			print("캐릭터 영역: ", char_rect)
-			if char_rect.has_point(mouse_pos):
-				print("캐릭터 클릭됨: ", character.character_name)
-				select_character(character)
-				return true
-	
-	print("선택된 캐릭터가 없습니다.")
-	return false
+func select_character_for_display(character: Character):
+	# 시각적 표시(노란 테두리)는 현재 턴인 캐릭터에게만 유지
+	if selected_character and is_instance_valid(selected_character):
+		var ring = selected_character.get_node_or_null("SelectionRing")
+		if ring: ring.queue_free()
+		var arrow = selected_character.get_node_or_null("SelectionArrow")
+		if arrow: arrow.queue_free()
 
-func select_character(character: Character):
-	# 이전 선택 해제
-	if selected_character:
-		clear_highlights()
-		clear_character_selection_visual()
-	
 	selected_character = character
-	update_character_info()
-	
-	# 선택된 캐릭터 시각적 표시
-	show_character_selection_visual(character)
-	
-	# 선택된 캐릭터의 이동 범위 자동 표시 (has_moved 조건 제거)
-	if selected_character and selected_character.is_player_controlled:
-		print("=== 이동 범위 표시 시작 ===")
-		print("캐릭터: ", selected_character.character_name)
-		print("현재 위치: ", selected_character.grid_position)
-		print("이동 거리: ", selected_character.move_range)
-		
-		var reachable = battle_grid.get_reachable_tiles(selected_character.grid_position, selected_character.move_range)
-		print("계산된 이동 가능 타일: ", reachable.size(), "개")
-		
-		if reachable.size() > 0:
-			# 붉은 반투명 그림자로 이동 범위 표시
-			battle_grid.highlight_tiles(reachable, Color(1.0, 0.2, 0.2, 0.8))  # 좀 더 진하게
-			print("하이라이트 표시 완료")
-		else:
-			print("이동 가능한 타일이 없습니다!")
-		print("=== 이동 범위 표시 완료 ===")
-	
-	print(character.character_name, " 선택됨")
+	update_character_info_display(selected_character)
 
-func update_character_info():
-	print("update_character_info 호출됨")
-	
-	if selected_character:
-		print("선택된 캐릭터 정보 업데이트: ", selected_character.character_name)
-		
+	# 현재 턴인 캐릭터에게는 항상 시각적 표시
+	if is_instance_valid(current_turn_character):
+		show_character_selection_visual(current_turn_character)
+
+func update_character_info_display(character: Character):
+	if character:
 		# UI 요소들이 존재하는지 확인
 		if character_name_label:
-			character_name_label.text = selected_character.character_name + " Lv." + str(selected_character.level)
-			print("이름 라벨 업데이트: ", character_name_label.text)
-		else:
-			print("character_name_label이 null입니다!")
-		
+			character_name_label.text = character.character_name + " Lv." + str(character.level)
 		if character_class_label:
-			character_class_label.text = "클래스: " + selected_character.current_class
-			print("클래스 라벨 업데이트: ", character_class_label.text)
-		else:
-			print("character_class_label이 null입니다!")
-		
+			character_class_label.text = "클래스: " + character.current_class
 		if hp_bar:
-			hp_bar.max_value = selected_character.max_health
-			hp_bar.value = selected_character.current_health
-			print("HP 바 업데이트: ", hp_bar.value, "/", hp_bar.max_value)
-		else:
-			print("hp_bar가 null입니다!")
-		
+			hp_bar.max_value = character.max_health
+			hp_bar.value = character.current_health
 		if mp_bar:
-			mp_bar.max_value = selected_character.max_mana
-			mp_bar.value = selected_character.current_mana
-			print("MP 바 업데이트: ", mp_bar.value, "/", mp_bar.max_value)
-		else:
-			print("mp_bar가 null입니다!")
-		
-		# 상세 스탯 업데이트
-		update_stat_labels()
+			mp_bar.max_value = character.max_mana
+			mp_bar.value = character.current_mana
+		update_stat_labels(character)
+	else:
+		# 선택된 캐릭터가 없음 - UI 초기화
+		if character_name_label: character_name_label.text = "캐릭터 없음"
+		if character_class_label: character_class_label.text = "클래스: 없음"
+		if hp_bar: hp_bar.value = 0
+		if mp_bar: mp_bar.value = 0
+		reset_stat_labels()
 
-func update_stat_labels():
-	if not selected_character:
+func update_action_buttons():
+	# 버튼 활성화는 오직 '현재 턴인 캐릭터'를 기준으로 판단
+	if not current_turn_character:
+		move_button.disabled = true
+		attack_button.disabled = true
+		skill_button.disabled = true
+		end_turn_button.disabled = true
+		return
+
+	var can_move = not current_turn_character.has_moved
+	var can_use_action = not current_turn_character.has_acted
+
+	move_button.disabled = not can_move
+	attack_button.disabled = not can_use_action
+	skill_button.disabled = not (can_use_action and current_turn_character.learned_skills.size() > 0)
+	end_turn_button.disabled = false # 자기 턴일땐 항상 종료 가능
+
+func update_stat_labels(character: Character):
+	if not character:
 		reset_stat_labels()
 		return
 		
-	var stats = selected_character.current_stats
+	var stats = character.current_stats
 	
-	if str_label:
-		str_label.text = "STR: " + str(stats.get("STR", 0))
-	if def_label:
-		def_label.text = "DEF: " + str(stats.get("DEF", 0))
-	if dex_label:
-		dex_label.text = "DEX: " + str(stats.get("DEX", 0))
-	if agi_label:
-		agi_label.text = "AGI: " + str(stats.get("AGI", 0))
-	if int_label:
-		int_label.text = "INT: " + str(stats.get("INT", 0))
-	if res_label:
-		res_label.text = "RES: " + str(stats.get("RES", 0))
+	if str_label: str_label.text = "STR: " + str(stats.get("STR", 0))
+	if def_label: def_label.text = "DEF: " + str(stats.get("DEF", 0))
+	if dex_label: dex_label.text = "DEX: " + str(stats.get("DEX", 0))
+	if agi_label: agi_label.text = "AGI: " + str(stats.get("AGI", 0))
+	if int_label: int_label.text = "INT: " + str(stats.get("INT", 0))
+	if res_label: res_label.text = "RES: " + str(stats.get("RES", 0))
 
 func reset_stat_labels():
 	if str_label:
@@ -598,25 +563,6 @@ func reset_stat_labels():
 		int_label.text = "INT: -"
 	if res_label:
 		res_label.text = "RES: -"
-		
-		# 행동 가능 여부에 따른 버튼 활성화
-		var can_act = GameManager.current_phase == GameManager.TurnPhase.PLAYER_TURN
-		if move_button:
-			move_button.disabled = not (can_act and not selected_character.has_moved)
-		if attack_button:
-			attack_button.disabled = not (can_act and not selected_character.has_acted)
-		if skill_button:
-			skill_button.disabled = not (can_act and not selected_character.has_acted)
-	else:
-		print("선택된 캐릭터가 없음 - UI 초기화")
-		if character_name_label:
-			character_name_label.text = "캐릭터 없음"
-		if character_class_label:
-			character_class_label.text = "클래스: 없음"
-		if hp_bar:
-			hp_bar.value = 0
-		if mp_bar:
-			mp_bar.value = 0
 
 func clear_highlights():
 	highlighted_tiles.clear()
@@ -626,40 +572,6 @@ func highlight_tiles(tiles: Array, color: Color = Color.YELLOW):
 	clear_highlights()
 	highlighted_tiles = tiles
 	battle_grid.highlight_tiles(tiles, color)
-
-func show_character_selection_visual(character: Character):
-	# 선택된 캐릭터 주위에 노란색 테두리 표시
-	var selection_ring = ColorRect.new()
-	selection_ring.name = "SelectionRing"
-	selection_ring.size = Vector2(40, 40)
-	selection_ring.color = Color.TRANSPARENT
-	selection_ring.add_theme_stylebox_override("panel", create_selection_border())
-	selection_ring.position = Vector2(-20, -20)
-	character.add_child(selection_ring)
-	
-	# 선택된 캐릭터 위에 화살표 표시
-	var arrow = Label.new()
-	arrow.name = "SelectionArrow"
-	arrow.text = "▼"
-	arrow.position = Vector2(-8, -35)
-	arrow.add_theme_color_override("font_color", Color.YELLOW)
-	arrow.add_theme_font_size_override("font_size", 20)
-	character.add_child(arrow)
-	
-	print("캐릭터 선택 시각화 표시: ", character.character_name)
-
-func clear_character_selection_visual():
-	# 이전 선택된 캐릭터의 시각적 표시만 제거
-	if is_instance_valid(selected_character):
-		var selection_ring = selected_character.get_node_or_null("SelectionRing")
-		if selection_ring:
-			selection_ring.queue_free()
-		
-		var arrow = selected_character.get_node_or_null("SelectionArrow")
-		if arrow:
-			arrow.queue_free()
-		
-		print(selected_character.character_name, "의 선택 표시 제거됨")
 
 func create_selection_border() -> StyleBoxFlat:
 	var style = StyleBoxFlat.new()
@@ -676,43 +588,45 @@ func _on_tile_clicked(grid_pos: Vector2i, terrain_name: String):
 	print("타일 클릭됨: ", grid_pos, " (", terrain_name, ")")
 	print("현재 액션 모드: ", ActionMode.keys()[action_mode])
 	
+	# 타일 위에 있는 캐릭터 정보 표시
+	var char_on_tile = get_character_at_position(grid_pos)
+	if char_on_tile:
+		select_character_for_display(char_on_tile)
+		
 	match action_mode:
 		ActionMode.MOVE:
 			print("이동 모드에서 타일 클릭")
-			if selected_character and selected_character.is_player_controlled:
-				print("플레이어 캐릭터로 이동 시도: ", selected_character.character_name)
-				print("목표 위치: ", grid_pos)
-				print("현재 위치: ", selected_character.grid_position)
+			if current_turn_character and current_turn_character.is_player_controlled:
+				print("플레이어 캐릭터로 이동 시도: ", current_turn_character.character_name)
 				
-				if selected_character.move_to(grid_pos, battle_grid):
+				if current_turn_character.move_to(grid_pos, battle_grid):
 					print("이동 성공!")
 					action_mode = ActionMode.NONE
 					clear_highlights()
-					update_character_info()
+					update_action_buttons()
 				else:
 					print("이동 실패!")
 		
 		ActionMode.ATTACK:
-			if selected_character and selected_character.is_player_controlled:
+			if current_turn_character and current_turn_character.is_player_controlled:
 				var target = get_character_at_position(grid_pos)
 				if target and not target.is_player_controlled:
-					perform_attack(selected_character, target)
+					perform_attack(current_turn_character, target)
 					action_mode = ActionMode.NONE
 					clear_highlights()
 		
 		ActionMode.SKILL:
-			if selected_character and selected_character.is_player_controlled:
+			if current_turn_character and current_turn_character.is_player_controlled:
 				# 임시로 첫 번째 스킬 사용
-				if selected_character.learned_skills.size() > 0:
-					var skill_name = selected_character.learned_skills[0]
-					if selected_character.use_skill(skill_name, grid_pos, battle_grid):
+				if current_turn_character.learned_skills.size() > 0:
+					var skill_name = current_turn_character.learned_skills[0]
+					if current_turn_character.use_skill(skill_name, grid_pos, battle_grid):
 						action_mode = ActionMode.NONE
 						clear_highlights()
-						update_character_info()
+						update_action_buttons()
 		
 		ActionMode.NONE:
-			# 타일 클릭 시에는 아무것도 하지 않음 (캐릭터 선택은 _input에서 처리)
-			pass
+			pass # 아무 모드가 아닐땐 타일 클릭으로 아무것도 하지 않음
 
 func get_character_at_position(grid_pos: Vector2i) -> Character:
 	for character in all_characters:
@@ -724,107 +638,151 @@ func perform_attack(attacker: Character, target: Character):
 	var skill_name = "Slash"  # 기본 공격
 	if skill_name in attacker.learned_skills:
 		var terrain_name = battle_grid.get_terrain_at_position(target.grid_position)
-		var damage = GameManager.calculate_damage(
+		var damage_result = GameManager.calculate_damage(
 			character_to_data(attacker),
 			character_to_data(target),
 			skill_name,
 			terrain_name
 		)
 		
-		target.take_damage(damage)
+		var damage = damage_result["damage"]
+		var is_critical = damage_result["is_critical"]
+		var effects = damage_result["effects"]
+		
+		if damage > 0:
+			target.take_damage(damage)
+			
+			# 전투 로그 출력
+			var attack_log = attacker.character_name + "이(가) " + target.character_name + "을(를) 공격!"
+			if is_critical:
+				attack_log += " 🎯 크리티컬 히트!"
+			attack_log += " " + str(damage) + " 데미지!"
+			
+			print(attack_log)
+			
+			# 추가 효과들 출력
+			for effect in effects:
+				if effect != "Critical Hit!":
+					print("  → " + effect)
+		else:
+			print(attacker.character_name + "의 공격이 빗나갔습니다!")
+		
 		attacker.has_acted = true
-		
-		print(attacker.character_name, "이(가) ", target.character_name, "을(를) 공격! ", damage, " 데미지!")
-		
-		update_character_info()
+		update_action_buttons()
 
 func _on_move_button_pressed():
 	print("이동 버튼 클릭됨")
-	if selected_character:
-		print("선택된 캐릭터: ", selected_character.character_name)
-		print("이미 이동했는가: ", selected_character.has_moved)
-		print("현재 위치: ", selected_character.grid_position)
-		
-		if not selected_character.has_moved:
-			action_mode = ActionMode.MOVE
-			var reachable = battle_grid.get_reachable_tiles(selected_character.grid_position, selected_character.move_range)
-			print("이동 가능한 타일 수: ", reachable.size())
-			print("이동 가능한 타일들: ", reachable)
-			# 붉은 반투명 그림자로 이동 범위 표시
-			battle_grid.highlight_tiles(reachable, Color(1.0, 0.2, 0.2, 0.6))
-			print("이동 모드 활성화")
-		else:
-			print("이미 이동한 캐릭터입니다!")
+	if current_turn_character and not current_turn_character.has_moved:
+		action_mode = ActionMode.MOVE
+		clear_highlights()
+		var reachable = battle_grid.get_reachable_tiles(current_turn_character.grid_position, current_turn_character.move_range)
+		battle_grid.highlight_tiles(reachable, Color(1.0, 0.2, 0.2, 0.6))
+		print("이동 모드 활성화")
 	else:
-		print("선택된 캐릭터가 없습니다!")
+		print("이미 이동한 캐릭터입니다!")
 
 func _on_attack_button_pressed():
-	if selected_character and not selected_character.has_acted:
+	if current_turn_character and not current_turn_character.has_acted:
 		action_mode = ActionMode.ATTACK
-		var attackable = battle_grid.get_attack_range(selected_character.grid_position, 1)  # 기본 사거리 1
+		clear_highlights()
+		var attackable = battle_grid.get_attack_range(current_turn_character.grid_position, 1)  # 기본 사거리 1
 		highlight_tiles(attackable, Color.RED)
 		print("공격 모드 활성화")
 
 func _on_skill_button_pressed():
-	if selected_character and not selected_character.has_acted and selected_character.learned_skills.size() > 0:
+	if current_turn_character and not current_turn_character.has_acted and current_turn_character.learned_skills.size() > 0:
 		action_mode = ActionMode.SKILL
-		var skill_name = selected_character.learned_skills[0]  # 첫 번째 스킬
+		clear_highlights()
+		var skill_name = current_turn_character.learned_skills[0]  # 첫 번째 스킬
 		var skill_data = GameData.SKILLS[skill_name]
-		var skill_range = battle_grid.get_attack_range(selected_character.grid_position, skill_data["range"])
+		var skill_range = battle_grid.get_attack_range(current_turn_character.grid_position, skill_data["range"])
 		highlight_tiles(skill_range, Color.PURPLE)
 		print("스킬 모드 활성화: ", skill_name)
 
 func _on_end_turn_button_pressed():
-	print("플레이어 턴 종료 버튼 클릭")
-	
-	# 현재 플레이어 턴인지 확인
-	if GameManager.current_phase != GameManager.TurnPhase.PLAYER_TURN:
-		print("현재 플레이어 턴이 아닙니다!")
+	print("턴 종료 버튼 클릭")
+	if not current_turn_character:
+		print("현재 턴인 캐릭터가 없습니다.")
 		return
 	
-	GameManager.next_turn()
+	GameManager.advance_turn()
 	action_mode = ActionMode.NONE
 	clear_highlights()
-	clear_character_selection_visual()
 	
-	# 모든 플레이어 캐릭터의 턴 종료 처리
-	for character in player_characters:
-		character.end_turn()
-	
-	print("플레이어 턴 종료됨")
+	# 현재 캐릭터의 턴 종료 처리
+	current_turn_character.end_turn()
+	print(current_turn_character.character_name, " 턴 종료")
+	self.current_turn_character = null # 턴 종료 시 주인공 정보 초기화
 
-func _on_turn_changed(current_turn):
-	print("턴 변경됨: ", GameManager.TurnPhase.keys()[current_turn])
+func _on_turn_order_updated(turn_order: Array):
+	print("행동 순서 UI 업데이트")
+	final_turn_order = turn_order
 	
-	match current_turn:
-		GameManager.TurnPhase.PLAYER_TURN:
-			turn_label.text = "플레이어 턴"
-			# 플레이어 캐릭터들의 행동 상태 초기화
-			for character in player_characters:
-				character.has_moved = false
-				character.has_acted = false
-			print("플레이어 턴 시작 - 모든 캐릭터 행동 가능")
-			
-		GameManager.TurnPhase.ENEMY_TURN:
-			turn_label.text = "적 턴"
-			# 적 캐릭터들의 행동 상태 초기화
-			for character in enemy_characters:
-				character.has_moved = false
-				character.has_acted = false
-			process_enemy_turn()
-			
-		GameManager.TurnPhase.ENVIRONMENT_TURN:
-			turn_label.text = "환경 턴"
-			print("환경 턴 처리 중...")
-			# 환경 턴은 자동으로 다음 턴으로 넘어감
-			await get_tree().create_timer(1.0).timeout
-			GameManager.next_turn()
+	# 기존 목록 지우기
+	for child in turn_order_vbox.get_children():
+		child.queue_free()
 	
-	turn_counter.text = "턴: " + str(GameManager.turn_count)
-	update_character_info()
+	# 새 목록 생성 (애니메이션을 위해 "?" 로 초기화)
+	for character in turn_order:
+		if is_instance_valid(character):
+			var label = Label.new()
+			label.text = "???"
+			label.add_theme_color_override("font_color", Color.WHITE)
+			label.add_theme_font_size_override("font_size", 14)
+			turn_order_vbox.add_child(label)
+
+func _on_turn_advanced(character: Character, turn_order: Array):
+	print("새로운 턴 시작: ", character.character_name)
+
+	# 1. 새로운 턴의 주인공 설정
+	self.current_turn_character = character
+	
+	# 2. 캐릭터 상태 초기화
+	character.has_moved = false
+	character.has_acted = false
+	
+	# 3. UI 업데이트
+	# 3a. 턴 순서 목록 강조
+	for i in range(turn_order_vbox.get_child_count()):
+		var label = turn_order_vbox.get_child(i) as Label
+		if i < turn_order.size() and is_instance_valid(turn_order[i]):
+			if turn_order[i] == character:
+				label.add_theme_color_override("font_color", Color.YELLOW)
+				label.text = "> " + turn_order[i].character_name
+			else:
+				var original_color = Color.WHITE if turn_order[i].is_player_controlled else Color.PINK
+				label.add_theme_color_override("font_color", original_color)
+				label.text = turn_order[i].character_name
+
+	# 3b. 정보창 & 버튼 업데이트
+	update_character_info_display(character)
+	update_action_buttons()
+	
+	# 3c. 캐릭터 위에 선택 표시
+	show_character_selection_visual(character)
+
+	# 4. 턴 종류에 따른 행동 개시
+	if character.is_player_controlled:
+		# 플레이어 턴: 자동으로 이동 모드 활성화 및 이동 범위 표시
+		turn_label.text = character.character_name + " 행동"
+		action_mode = ActionMode.MOVE
+		clear_highlights()
+		var reachable = battle_grid.get_reachable_tiles(character.grid_position, character.move_range)
+		battle_grid.highlight_tiles(reachable, Color(1.0, 0.2, 0.2, 0.6))
+	else:
+		# 적 턴
+		turn_label.text = "적 턴: " + character.character_name
+		action_mode = ActionMode.NONE # 플레이어 입력 방지
+		clear_highlights()
+		show_toast("적 " + character.character_name + "의 차례")
+		await get_tree().create_timer(1.5).timeout # 메시지 보일 시간
+		process_enemy_turn(character)
+	
+	turn_counter.text = "라운드: " + str(GameManager.round_count)
 
 func _on_battle_started():
-	print("전투 시작!")
+	print("전투 시작! 애니메이션 시퀀스를 시작합니다.")
+	animate_turn_order()
 
 func _on_battle_ended():
 	print("전투 종료!")
@@ -859,39 +817,53 @@ func _on_character_health_changed(character: Character, new_health: int, max_hea
 			else:
 				hp_bar.color = Color.RED
 	
-	if character == selected_character:
-		update_character_info()
+	update_character_info_display(character)
 
-func process_enemy_turn():
-	print("적 턴 처리 시작")
+func process_enemy_turn(enemy: Character):
+	print("적 ", enemy.character_name, " 행동 처리 시작")
 	
+	if enemy.current_health <= 0:
+		print("이미 행동 불능 상태입니다.")
+		GameManager.advance_turn()
+		return
+		
 	# 간단한 AI 로직
 	await get_tree().create_timer(1.0).timeout  # 1초 대기
 	
-	for enemy in enemy_characters:
-		if enemy.current_health > 0:
-			print("적 ", enemy.character_name, " 행동 중...")
-			
-			# 가장 가까운 플레이어를 찾아 공격
-			var closest_player = find_closest_player(enemy)
-			if closest_player:
-				var distance = enemy.grid_position.distance_to(closest_player.grid_position)
-				print("거리: ", distance)
-				
-				if distance <= 1:  # 인접하면 공격
-					print("적이 공격합니다!")
-					perform_attack(enemy, closest_player)
-				else:
-					# 플레이어 쪽으로 이동
-					print("적이 이동합니다!")
-					move_enemy_towards_target(enemy, closest_player)
-		
-		enemy.end_turn()
-		await get_tree().create_timer(0.5).timeout  # 0.5초 대기
+	print("적 ", enemy.character_name, " 행동 중...")
 	
-	print("적 턴 완료 - 플레이어 턴으로 전환")
-	# 적 턴 종료 후 환경 턴으로 (GameManager가 자동으로 플레이어 턴으로 돌림)
-	GameManager.next_turn()
+	# 가장 가까운 플레이어를 찾아 공격
+	var closest_player = find_closest_player(enemy)
+	if closest_player:
+		var distance = enemy.grid_position.distance_to(closest_player.grid_position)
+		print("가장 가까운 플레이어: ", closest_player.character_name, ", 거리: ", distance)
+		
+		# 공격 가능 범위 확인 (기본 사거리 1)
+		var can_attack = false
+		var attack_range = battle_grid.get_attack_range(enemy.grid_position, 1)
+		if closest_player.grid_position in attack_range:
+			can_attack = true
+			
+		if can_attack:
+			print("적이 공격합니다!")
+			perform_attack(enemy, closest_player)
+		else:
+			# 플레이어 쪽으로 이동
+			print("적이 이동합니다!")
+			move_enemy_towards_target(enemy, closest_player)
+			
+			# 이동 후 다시 공격 시도
+			await get_tree().create_timer(0.5).timeout
+			attack_range = battle_grid.get_attack_range(enemy.grid_position, 1)
+			if closest_player.grid_position in attack_range:
+				print("이동 후 적이 공격합니다!")
+				perform_attack(enemy, closest_player)
+
+	enemy.end_turn()
+	await get_tree().create_timer(0.5).timeout
+	
+	print("적 ", enemy.character_name, " 행동 완료 - 다음 턴으로 전환")
+	GameManager.advance_turn()
 
 func find_closest_player(enemy: Character) -> Character:
 	var closest: Character = null
@@ -1001,3 +973,141 @@ func get_korean_terrain_name(terrain_name: String) -> String:
 		return korean_names[terrain_name]
 	else:
 		return terrain_name 
+
+func setup_turn_order_ui():
+	var ui_node = get_node("UI")
+
+	turn_order_panel = Panel.new()
+	var viewport_size = get_viewport().get_visible_rect().size
+	turn_order_panel.size = Vector2(150, 400)
+	turn_order_panel.position = Vector2(viewport_size.x - 160, 10)
+	
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.1, 0.1, 0.2, 0.7)
+	style.border_width_left = 2
+	style.border_width_right = 2
+	style.border_width_top = 2
+	style.border_width_bottom = 2
+	style.border_color = Color.SKY_BLUE
+	style.corner_radius_top_left = 8
+	style.corner_radius_top_right = 8
+	style.corner_radius_bottom_left = 8
+	style.corner_radius_bottom_right = 8
+	turn_order_panel.add_theme_stylebox_override("panel", style)
+	
+	var title = Label.new()
+	title.text = "행동 순서"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.position = Vector2(0, 5)
+	title.size = Vector2(150, 20)
+	title.add_theme_font_size_override("font_size", 16)
+	turn_order_panel.add_child(title)
+	
+	turn_order_vbox = VBoxContainer.new()
+	turn_order_vbox.position = Vector2(10, 35)
+	turn_order_vbox.size = Vector2(130, 360)
+	turn_order_panel.add_child(turn_order_vbox)
+
+	ui_node.add_child(turn_order_panel)
+
+func show_toast(message: String, duration: float = 2.0):
+	var toast_panel = Panel.new()
+	toast_panel.size = Vector2(300, 60)
+	toast_panel.position = Vector2(get_viewport().size.x / 2 - 150, 50)
+	
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.1, 0.1, 0.1, 0.8)
+	style.corner_radius_top_left = 10
+	style.corner_radius_top_right = 10
+	style.corner_radius_bottom_left = 10
+	style.corner_radius_bottom_right = 10
+	toast_panel.add_theme_stylebox_override("panel", style)
+
+	var label = Label.new()
+	label.text = message
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	label.size = toast_panel.size
+	label.add_theme_font_size_override("font_size", 24)
+	toast_panel.add_child(label)
+	
+	get_node("UI").add_child(toast_panel)
+	
+	var tween = create_tween()
+	toast_panel.modulate.a = 0.0
+	tween.tween_property(toast_panel, "modulate:a", 1.0, 0.3)
+	tween.tween_interval(duration)
+	tween.tween_property(toast_panel, "modulate:a", 0.0, 0.5)
+	tween.tween_callback(toast_panel.queue_free)
+
+func animate_turn_order():
+	show_toast("전투 개시!")
+	await get_tree().create_timer(1.0).timeout
+	
+	var char_names = []
+	for char in final_turn_order:
+		if is_instance_valid(char):
+			char_names.append(char.character_name)
+
+	# 슬롯머신 효과
+	var duration = 2.0
+	var interval = 0.05
+	var elapsed = 0.0
+	while elapsed < duration:
+		for i in range(turn_order_vbox.get_child_count()):
+			var label = turn_order_vbox.get_child(i) as Label
+			label.text = char_names[randi() % char_names.size()]
+		await get_tree().create_timer(interval).timeout
+		elapsed += interval
+	
+	# 최종 순서 표시
+	for i in range(turn_order_vbox.get_child_count()):
+		var label = turn_order_vbox.get_child(i) as Label
+		if i < final_turn_order.size():
+			var char = final_turn_order[i]
+			if is_instance_valid(char):
+				label.text = char.character_name
+				var original_color = Color.WHITE if char.is_player_controlled else Color.PINK
+				label.add_theme_color_override("font_color", original_color)
+				
+	await get_tree().create_timer(0.5).timeout
+	
+	# 첫 턴 시작
+	GameManager.advance_turn()
+
+func show_character_selection_visual(character: Character):
+	# 이전에 표시된 시각 효과가 있다면 모두 지움
+	clear_character_selection_visual()
+
+	# 새 캐릭터에게 시각 효과 적용
+	if is_instance_valid(character):
+		# 선택된 캐릭터 주위에 노란색 테두리 표시
+		var selection_ring = ColorRect.new()
+		selection_ring.name = "SelectionRing"
+		selection_ring.size = Vector2(40, 40)
+		selection_ring.color = Color.TRANSPARENT
+		selection_ring.add_theme_stylebox_override("panel", create_selection_border())
+		selection_ring.position = Vector2(-20, -20)
+		character.add_child(selection_ring)
+		
+		# 선택된 캐릭터 위에 화살표 표시
+		var arrow = Label.new()
+		arrow.name = "SelectionArrow"
+		arrow.text = "▼"
+		arrow.position = Vector2(-8, -35)
+		arrow.add_theme_color_override("font_color", Color.YELLOW)
+		arrow.add_theme_font_size_override("font_size", 20)
+		character.add_child(arrow)
+		
+		previous_selection = character
+
+func clear_character_selection_visual():
+	if is_instance_valid(previous_selection):
+		var old_ring = previous_selection.get_node_or_null("SelectionRing")
+		if old_ring: old_ring.queue_free()
+		
+		var old_arrow = previous_selection.get_node_or_null("SelectionArrow")
+		if old_arrow: old_arrow.queue_free()
+	
+	previous_selection = null

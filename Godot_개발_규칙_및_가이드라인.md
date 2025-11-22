@@ -1,8 +1,8 @@
-# 🎮 Godot 개발 규칙 및 가이드라인
+# 🎮 Godot 개발 규칙 및 가이드라인 (Godot 4.5 / 3D Isometric SRPG)
 
 ## 📋 목표
 
-이 문서는 Godot 4.4 엔진을 사용한 전술 SRPG 프로젝트의 일관성 있고 효율적인 개발을 위한 규칙과 가이드라인을 제시합니다.
+이 문서는 **Godot 4.5** 엔진을 사용한 **3D 아이소메트릭(Isometric) 전술 SRPG** 프로젝트의 일관성 있고 효율적인 개발을 위한 규칙과 가이드라인을 제시합니다.
 
 ---
 
@@ -10,21 +10,29 @@
 
 ### 1. **폴더 구조 원칙**
 
+3D 프로젝트의 특성을 반영하여 에셋과 씬 구조를 세분화합니다.
+
 ```
 프로젝트_루트/
 ├── scenes/          # 씬 파일들 (.tscn + .gd)
-│   ├── ui/         # UI 관련 씬
-│   ├── battle/     # 전투 관련 씬
-│   └── menu/       # 메뉴 관련 씬
+│   ├── ui/         # UI 관련 씬 (HUD, 메뉴 등)
+│   ├── maps/       # 전투 맵 및 레벨 씬 (GridMap 포함)
+│   ├── units/      # 3D 유닛/캐릭터 씬
+│   ├── objects/    # 상호작용 가능한 3D 오브젝트 (상자, 함정 등)
+│   └── vfx/        # 시각 효과 (파티클 등)
 ├── scripts/         # 순수 로직 스크립트들
-│   ├── managers/   # 싱글톤 매니저들
-│   ├── data/       # 데이터 클래스들
-│   └── utils/      # 유틸리티 함수들
+│   ├── managers/   # 싱글톤 매니저들 (GameManager, TurnManager)
+│   ├── data/       # 데이터 클래스들 (Stats, Skills, Items)
+│   └── utils/      # 유틸리티 함수들 (Math, Grid, Pathfinding)
 ├── assets/          # 리소스 파일들
-│   ├── sprites/    # 스프라이트 이미지
+│   ├── models/     # 3D 모델 파일 (.gltf, .glb, .obj)
+│   │   ├── characters/
+│   │   └── environment/
+│   ├── materials/  # 재질 파일 (.tres)
+│   ├── textures/   # 텍스처 이미지
 │   ├── audio/      # 사운드 파일
-│   └── fonts/      # 폰트 파일
-├── resources/       # Godot 리소스 파일들 (.tres, .res)
+│   └── shaders/    # 셰이더 파일 (.gdshader)
+├── resources/       # Godot 커스텀 리소스 (.tres, .res)
 └── addons/          # 플러그인 및 확장
 ```
 
@@ -32,346 +40,185 @@
 
 ```
 # 씬 파일
-BattleScene.tscn / BattleScene.gd
-MainMenu.tscn / MainMenu.gd
-CharacterInfoUI.tscn / CharacterInfoUI.gd
+BattleMap01.tscn / BattleMap01.gd
+HeroUnit.tscn / HeroUnit.gd
+Cursor3D.tscn / Cursor3D.gd
 
 # 스크립트 파일  
-Character.gd          # 클래스명과 동일
-GameManager.gd        # 싱글톤은 Manager 접미사
-GameData.gd          # 데이터는 Data 접미사
-BattleUtils.gd       # 유틸리티는 Utils 접미사
+UnitController.gd     # 클래스명과 동일
+TurnManager.gd        # 싱글톤은 Manager 접미사
+ItemData.gd           # 데이터는 Data 접미사
+GridUtils.gd          # 유틸리티는 Utils 접미사
 
 # 리소스 파일
-knight_idle.png      # 소문자 + 언더스코어
-fireball_effect.tres # 소문자 + 언더스코어
+floor_tile_mat.tres   # 소문자 + 언더스코어
+hero_texture_diff.png # 용도 명시 (diffuse, normal, orm 등)
+sword_slash.wav
 ```
 
 ---
 
-## 💻 GDScript 코딩 규칙
+## 💻 GDScript 코딩 규칙 (3D 대응)
 
 ### 1. **클래스 및 변수 명명**
 
 ```gdscript
 # 클래스명: PascalCase
-class_name BattleManager
-class_name CharacterData
+class_name UnitController extends CharacterBody3D
 
 # 변수명: snake_case
-var character_name: String
-var max_health: int
-var is_player_controlled: bool
+var grid_position: Vector3i  # 3D 그리드 좌표 (x, y, z)
+var world_position: Vector3  # 실제 월드 좌표
+var movement_speed: float
 
 # 상수: SCREAMING_SNAKE_CASE
-const MAX_LEVEL: int = 99
-const DEFAULT_MOVE_RANGE: int = 3
+const TILE_SIZE: float = 2.0
+const GRAVITY: float = 9.8
+const MAX_HEIGHT_DIFF: int = 2
 
 # 신호: snake_case
-signal character_selected(character)
-signal battle_ended(victory)
-
-# 함수명: snake_case
-func calculate_damage(attacker: Character, defender: Character) -> int:
-func get_valid_move_positions() -> Array[Vector2i]:
+signal unit_moved(unit, from_pos, to_pos)
+signal turn_ended(unit)
 ```
 
 ### 2. **타입 힌트 의무화**
 
+Godot 4.x의 성능 이점과 안정성을 위해 3D 타입 힌트를 적극 사용합니다.
+
 ```gdscript
 # ✅ 올바른 예시
-var character_list: Array[Character] = []
-var grid_position: Vector2i = Vector2i.ZERO
-var terrain_data: Dictionary = {}
+var target_unit: Node3D
+var path_points: Array[Vector3] = []
+var material_override: StandardMaterial3D
+var grid_map: GridMap
 
-func move_character(character: Character, target_pos: Vector2i) -> bool:
-    return true
+func move_to(target_pos: Vector3) -> void:
+    pass
 
 # ❌ 잘못된 예시 (타입 힌트 없음)
-var character_list = []
-var grid_position = Vector2i.ZERO
-
-func move_character(character, target_pos):
-    return true
+var target_unit
+var path_points = []
+func move_to(target_pos):
+    pass
 ```
 
 ### 3. **주석 작성 규칙**
 
 ```gdscript
-# 함수 상단에 목적과 매개변수 설명
-## 캐릭터를 지정된 위치로 이동시킵니다.
-## @param character: 이동시킬 캐릭터
-## @param target_pos: 목표 그리드 위치
+## 유닛을 지정된 그리드 좌표로 이동시킵니다.
+## @param unit: 이동시킬 유닛 (UnitController)
+## @param target_grid_pos: 목표 그리드 좌표 (Vector3i)
 ## @return: 이동 성공 여부
-func move_character(character: Character, target_pos: Vector2i) -> bool:
+func move_unit(unit: UnitController, target_grid_pos: Vector3i) -> bool:
     # 이동 가능성 검증
-    if not is_valid_position(target_pos):
-        print("유효하지 않은 위치: ", target_pos)
+    if not is_valid_position(target_grid_pos):
+        push_warning("유효하지 않은 위치: %s" % target_grid_pos)
         return false
     
-    # TODO: 이동 애니메이션 추가 필요
-    character.grid_position = target_pos
-    return true
-```
-
-### 4. **오류 처리 규칙**
-
-```gdscript
-# 조기 반환 패턴 사용
-func attack_target(attacker: Character, target: Character) -> bool:
-    # 조건 검증
-    if not attacker:
-        push_error("공격자가 null입니다")
-        return false
-    
-    if not target:
-        push_error("대상이 null입니다")  
-        return false
-    
-    if attacker.current_health <= 0:
-        print("죽은 캐릭터는 공격할 수 없습니다")
-        return false
-    
-    # 실제 로직 실행
-    var damage = calculate_damage(attacker, target)
-    target.take_damage(damage)
+    # TODO: 점프 또는 사다리 타기 애니메이션 처리 필요
+    unit.grid_position = target_grid_pos
     return true
 ```
 
 ---
 
-## 🔧 아키텍처 규칙
+## 🔧 아키텍처 규칙 (3D Isometric)
 
-### 1. **싱글톤 사용 지침**
+### 1. **GridMap 활용**
 
-```gdscript
-# 전역 상태 관리만 싱글톤으로 사용
-# - GameManager: 게임 상태 및 턴 관리
-# - GameData: 정적 데이터 저장
-# - AudioManager: 사운드 관리 (추후 추가)
-# - SaveManager: 저장/불러오기 (추후 추가)
+*   **지형(Terrain)**: `GridMap` 노드를 사용하여 최적화된 3D 타일맵을 구성합니다.
+*   **MeshLibrary**: 타일셋은 `MeshLibrary`로 관리하며, 각 타일 아이템은 충돌체(StaticBody3D)와 네비게이션 메쉬(NavigationRegion3D)를 포함해야 합니다.
+*   **레이어 관리**: 바닥, 벽, 장식물, 고저차 등을 관리하기 위해 Y축 레이어를 활용하거나 별도의 GridMap을 사용합니다.
 
-# ✅ 적절한 싱글톤 사용
-GameManager.start_battle(player_chars, enemy_chars)
-var class_data = GameData.CLASSES["Knight"]
+### 2. **카메라 설정 (Isometric View)**
 
-# ❌ 부적절한 싱글톤 사용 (개별 캐릭터 데이터)
-CharacterManager.elena.take_damage(10)  # 이렇게 하지 말 것
-```
-
-### 2. **신호(Signal) 사용 규칙**
+*   **Projection**: `Orthogonal` (직교 투영)을 사용하여 원근감을 제거, 정확한 아이소메트릭 뷰를 구현합니다.
+*   **Angle**: X축 회전 약 -30도, Y축 회전 45도 (일반적인 아이소메트릭 각도).
+*   **Zoom**: 카메라의 `Size` 속성을 조절하여 줌 인/아웃을 구현합니다.
 
 ```gdscript
-# 신호는 느슨한 결합을 위해서만 사용
-# 직접적인 참조가 가능한 경우 함수 호출 우선
-
-# ✅ 올바른 신호 사용 (계층 간 통신)
-signal character_died(character)
-signal tile_clicked(grid_pos, terrain_name)
-signal battle_ended(victory)
-
-# 신호 연결은 _ready()에서
-func _ready():
-    character.character_died.connect(_on_character_died)
-    battle_grid.tile_clicked.connect(_on_tile_clicked)
-
-# ❌ 부적절한 신호 사용 (같은 클래스 내부)
-signal _internal_calculation_done()  # 내부 처리에는 신호 사용 금지
+# Camera3D 설정 예시
+func setup_isometric_camera():
+    projection = Camera3D.PROJECTION_ORTHOGONAL
+    rotation_degrees = Vector3(-30, 45, 0)
+    size = 10.0 # 줌 레벨 (낮을수록 확대)
 ```
 
-### 3. **의존성 관리**
+### 3. **좌표 변환 (Grid <-> World)**
 
 ```gdscript
-# 의존성 주입 패턴 사용
-class_name BattleController
+# GridUtils.gd
+static func grid_to_world(grid_pos: Vector3i) -> Vector3:
+    return Vector3(
+        grid_pos.x * TILE_SIZE,
+        grid_pos.y * (TILE_SIZE * 0.5), # 높이 보정 (슬랩 등)
+        grid_pos.z * TILE_SIZE
+    )
 
-var battle_grid: BattleGrid
-var game_manager: GameManager
-
-# 생성자에서 의존성 주입
-func _init(grid: BattleGrid, manager: GameManager):
-    battle_grid = grid
-    game_manager = manager
-
-# ❌ 하드코딩된 의존성
-func attack():
-    GameManager.calculate_damage()  # 직접 참조 금지
-    get_node("/root/BattleGrid")    # 절대 경로 금지
+static func world_to_grid(world_pos: Vector3) -> Vector3i:
+    return Vector3i(
+        round(world_pos.x / TILE_SIZE),
+        round(world_pos.y / (TILE_SIZE * 0.5)),
+        round(world_pos.z / TILE_SIZE)
+    )
 ```
+
+### 4. **입력 처리 (RayCast)**
+
+*   마우스 클릭 시 3D 공간의 타일을 선택하기 위해 `PhysicsRayQueryParameters3D` 또는 `RayCast3D`를 사용합니다.
+*   카메라에서 마우스 커서 위치로 레이를 발사하여 `GridMap` 또는 `Unit`과의 충돌 지점을 찾습니다.
 
 ---
 
-## 🎨 UI 개발 규칙
+## ⚡ 성능 최적화 규칙 (3D)
 
-### 1. **UI 구조 및 명명**
+### 1. **렌더링 최적화**
 
-```gdscript
-# UI 노드 명명 규칙
-CharacterInfoPanel/
-├── NameLabel          # 역할 + 타입
-├── HealthBar         
-├── StatsContainer/
-│   ├── StrLabel
-│   ├── DefLabel
-│   └── AgiLabel
-└── ActionButtons/
-    ├── MoveButton
-    ├── AttackButton
-    └── SkillButton
-```
+*   **MultiMeshInstance3D**: 숲, 잔디, 바위 등 동일한 메쉬가 다수 반복되는 경우 반드시 `MultiMeshInstance3D`를 사용하여 드로우 콜(Draw Call)을 줄입니다.
+*   **Occlusion Culling**: 복잡한 던전이나 실내 맵에서는 가려진 오브젝트를 렌더링하지 않도록 오클루전 컬링을 설정합니다.
+*   **LOD (Level of Detail)**: Godot 4.x의 자동 LOD 생성 기능을 활용하여 카메라 거리에 따라 모델 디테일을 조절합니다.
 
-### 2. **UI 업데이트 패턴**
+### 2. **물리 및 충돌**
 
-```gdscript
-# UI 업데이트는 전용 함수로 분리
-func update_character_info(character: Character):
-    if not character:
-        hide_character_info()
-        return
-    
-    name_label.text = character.character_name
-    health_bar.value = character.current_health
-    health_bar.max_value = character.max_health
-    
-    # 스탯 업데이트
-    str_label.text = "STR: %d" % character.current_stats["STR"]
-    def_label.text = "DEF: %d" % character.current_stats["DEF"]
+*   **Collision Shape**: 복잡한 `TrimeshCollision` 대신 단순한 `BoxShape3D`, `SphereShape3D`, `CapsuleShape3D`를 우선 사용합니다.
+*   **Layer & Mask**: 충돌 레이어와 마스크를 철저히 구분합니다.
+    *   Layer 1: 지형 (Terrain)
+    *   Layer 2: 유닛 (Unit)
+    *   Layer 3: 상호작용 오브젝트 (Interactable)
+    *   Layer 4: 시야/센서 (Vision)
 
-# 데이터 변경 시 즉시 UI 업데이트
-func _on_character_selected(character: Character):
-    selected_character = character
-    update_character_info(character)
-    update_action_buttons(character)
-```
+### 3. **조명 및 섀도우**
 
----
-
-## ⚡ 성능 최적화 규칙
-
-### 1. **프레임당 처리량 제한**
-
-```gdscript
-# 매 프레임 실행되는 _process()에서 무거운 작업 금지
-func _process(delta):
-    # ✅ 가벼운 작업만
-    handle_input()
-    update_camera_position(delta)
-    
-    # ❌ 무거운 작업 금지
-    # generate_entire_map()        # 맵 전체 생성 금지
-    # calculate_all_pathfinding()  # 전체 경로 계산 금지
-
-# 무거운 작업은 필요할 때만 호출
-func _on_character_selected(character: Character):
-    calculate_move_range(character)  # 선택 시에만 계산
-```
-
-### 2. **메모리 관리**
-
-```gdscript
-# 노드 생성 시 적절한 해제 보장
-func create_highlight_tile(position: Vector2i) -> ColorRect:
-    var highlight = ColorRect.new()
-    highlight.color = Color.GREEN
-    add_child(highlight)
-    
-    # 참조 저장으로 나중에 해제 가능
-    highlighted_tiles[position] = highlight
-    return highlight
-
-func clear_highlights():
-    for pos in highlighted_tiles:
-        highlighted_tiles[pos].queue_free()
-    highlighted_tiles.clear()
-```
-
-### 3. **리소스 로딩 최적화**
-
-```gdscript
-# 리소스는 미리 로드하여 캐싱
-var preloaded_sprites: Dictionary = {}
-
-func _ready():
-    # 게임 시작 시 필요한 리소스 미리 로드
-    preloaded_sprites["knight"] = preload("res://assets/sprites/knight.png")
-    preloaded_sprites["mage"] = preload("res://assets/sprites/mage.png")
-
-# ❌ 매번 로드하는 패턴 금지
-func update_character_sprite(character: Character):
-    # var sprite = load("res://assets/sprites/" + character.class_name + ".png")  # 금지
-    var sprite = preloaded_sprites[character.class_name.to_lower()]  # 권장
-```
+*   **Lightmap**: 정적인 지형(GridMap)에는 `LightmapGI`를 베이크하여 런타임 조명 연산을 최소화합니다.
+*   **Shadows**: 모바일 타겟인 경우 실시간 그림자(DirectionalLight3D)의 해상도와 거리를 제한하고, 가능하다면 Blob Shadow(단순 텍스처 그림자)를 사용합니다.
 
 ---
 
 ## 🐛 디버깅 및 테스트 규칙
 
-### 1. **로깅 규칙**
+### 1. **3D 시각적 디버깅**
+
+*   **DebugDraw**: 이동 경로, 공격 범위, 시야 등을 시각화하기 위해 `ImmediateMesh`나 별도의 디버그용 노드를 사용합니다.
+*   **Visible Collision Shapes**: 디버그 메뉴에서 'Visible Collision Shapes'를 켜서 물리 충돌체가 의도대로 설정되었는지 확인합니다.
 
 ```gdscript
-# 로그 레벨 구분
-func move_character(character: Character, target_pos: Vector2i) -> bool:
-    print_rich("[color=blue][INFO][/color] 캐릭터 이동 시도: %s -> %s" % [character.character_name, target_pos])
+# 이동 경로 디버그 그리기 예시
+func draw_debug_path(points: Array[Vector3]):
+    if not OS.is_debug_build(): return
+    # ... ImmediateMesh 등을 사용하여 선 그리기 구현
+```
+
+### 2. **로깅 규칙**
+
+```gdscript
+func move_unit(unit: UnitController, target_pos: Vector3i) -> bool:
+    print_rich("[color=blue][INFO][/color] 유닛 이동 시도: %s -> %s" % [unit.name, target_pos])
     
     if not is_valid_position(target_pos):
         print_rich("[color=orange][WARN][/color] 유효하지 않은 위치: %s" % target_pos)
         return false
-    
-    if has_obstacle(target_pos):
-        print_rich("[color=red][ERROR][/color] 장애물 존재: %s" % target_pos)
-        return false
-    
-    print_rich("[color=green][SUCCESS][/color] 이동 완료: %s" % character.character_name)
+        
     return true
-```
-
-### 2. **디버그 모드 구분**
-
-```gdscript
-# 디버그 전용 코드는 조건부로 실행
-const DEBUG_MODE: bool = true
-
-func _ready():
-    if DEBUG_MODE:
-        create_debug_ui()
-        show_grid_coordinates()
-        enable_dev_commands()
-
-func _input(event):
-    if DEBUG_MODE and event is InputEventKey:
-        if event.keycode == KEY_F1 and event.pressed:
-            toggle_debug_info()
-        elif event.keycode == KEY_F2 and event.pressed:
-            generate_test_scenario()
-```
-
-### 3. **예외 상황 대비**
-
-```gdscript
-# 모든 배열 접근 시 범위 확인
-func get_character_at_position(pos: Vector2i) -> Character:
-    if pos.x < 0 or pos.x >= grid_width or pos.y < 0 or pos.y >= grid_height:
-        return null
-    
-    for character in all_characters:
-        if character.grid_position == pos:
-            return character
-    
-    return null
-
-# null 체크 필수
-func select_character(character: Character):
-    if not character:
-        print("선택할 캐릭터가 없습니다")
-        return
-    
-    if not character.is_player_controlled:
-        print("적 캐릭터는 선택할 수 없습니다")
-        return
-    
-    # 정상 처리 로직
-    selected_character = character
-    update_ui()
 ```
 
 ---
@@ -381,129 +228,59 @@ func select_character(character: Character):
 ### 1. **Git 커밋 메시지**
 
 ```
-feat: 새로운 기능 추가
-fix: 버그 수정
-refactor: 코드 리팩토링
-style: 코드 스타일 변경
-docs: 문서 수정
-test: 테스트 추가/수정
-chore: 기타 작업
-
-예시:
-feat: 캐릭터 클래스 체인지 시스템 구현
-fix: 타일 클릭 좌표 변환 오류 수정
-refactor: GameManager 싱글톤 구조 개선
+feat: 3D 카메라 줌 기능 구현
+fix: 유닛 이동 시 높이 계산 오류 수정
+refactor: GridMap 관리 로직 개선
+assets: 기사(Knight) 3D 모델 및 애니메이션 추가
+docs: 개발 가이드라인 업데이트
 ```
 
-### 2. **브랜치 전략**
-
-```
-main         # 안정된 릴리즈 버전
-develop      # 개발 중인 기능들 통합
-feature/*    # 새로운 기능 개발
-hotfix/*     # 긴급 버그 수정
-release/*    # 릴리즈 준비
-```
-
-### 3. **Godot 특화 .gitignore**
+### 2. **Godot 특화 .gitignore**
 
 ```gitignore
-# Godot 파일들
+# Godot 4.x
 .godot/
-.import/
+*.translation
 export.cfg
 export_presets.cfg
 
-# 빌드 결과물
-*.tmp
-*.exe
-*.pck
-*.zip
+# Mono/C# (사용 시)
+.mono/
+*.csproj
+*.sln
 
-# OS 파일들
+# Import cache
+*.import
+
+# OS generated
 .DS_Store
 Thumbs.db
 ```
 
 ---
 
-## 🚀 배포 및 빌드 규칙
-
-### 1. **빌드 전 체크리스트**
-
-```
-□ 모든 씬이 정상 로드되는지 확인
-□ 콘솔에 에러 메시지가 없는지 확인  
-□ 모든 리소스가 올바르게 연결되었는지 확인
-□ 메모리 누수가 없는지 확인
-□ 다양한 해상도에서 UI가 정상 작동하는지 확인
-```
-
-### 2. **최적화 설정**
-
-```gdscript
-# project.godot 권장 설정
-[application]
-config/name="Tactics SRPG"
-run/main_scene="res://scenes/MainMenu.tscn"
-
-[rendering]
-renderer/rendering_method="mobile"  # 2D 게임 권장
-textures/canvas_textures/default_texture_filter=0  # 픽셀아트용
-
-[physics]
-common/enable_pause_aware_picking=true
-```
-
----
-
-## 📚 학습 및 참고 자료
-
-### 1. **필수 Godot 문서**
-- [GDScript 스타일 가이드](https://docs.godotengine.org/en/stable/tutorials/scripting/gdscript/gdscript_styleguide.html)
-- [신호(Signal) 사용법](https://docs.godotengine.org/en/stable/getting_started/step_by_step/signals.html)
-- [씬 구조 설계](https://docs.godotengine.org/en/stable/getting_started/step_by_step/scene_organization.html)
-
-### 2. **프로젝트 참고 패턴**
-- 싱글톤 패턴: GameManager, GameData
-- 옵저버 패턴: Signal 기반 이벤트 처리
-- 컴포넌트 패턴: Character 클래스 구조
-- MVC 패턴: UI와 로직 분리
-
----
-
 ## ⚠️ 금지 사항
 
 ### 1. **절대 하지 말 것**
+
 ```gdscript
 # ❌ 하드코딩된 경로
-get_node("/root/Main/BattleScene/Character1")
-
-# ❌ 전역 변수 남용  
-var global_selected_character  # 싱글톤 없이 전역 변수 금지
-
-# ❌ 매직 넘버
-if character.level > 50:  # 50이 무엇을 의미하는지 불명확
-
-# ❌ 긴 함수 (50줄 이상)
-func god_function():  # 모든 것을 처리하는 거대 함수 금지
-```
-
-### 2. **성능 파괴 패턴**
-```gdscript
-# ❌ 무한 루프 위험
-while true:
-    process_something()  # 탈출 조건 없는 무한 루프
+get_node("/root/Main/BattleMap/Unit1")
 
 # ❌ 매 프레임 리소스 로드
 func _process(delta):
-    var texture = load("res://sprite.png")  # 금지
+    var mat = load("res://materials/grass.tres") # 절대 금지
 
-# ❌ 불필요한 노드 생성
-for i in range(1000):
-    var node = Node2D.new()  # 대량 생성 시 성능 저하
+# ❌ 복잡한 물리 연산 남용
+# 수백 개의 유닛이 매 프레임 물리 충돌을 체크하지 않도록 주의
 ```
+
+### 2. **성능 파괴 패턴**
+
+*   **과도한 조명**: 씬에 너무 많은 실시간 옴니 라이트(OmniLight3D)를 배치하지 마십시오. (Forward+ 렌더러라도 비용이 큼)
+*   **고해상도 텍스처 남용**: 4K 텍스처는 꼭 필요한 경우(주요 캐릭터 등)에만 사용하고, 배경은 적절히 압축하십시오.
+*   **유니크 메쉬 남발**: 가능한 한 메쉬와 재질을 재사용(Instancing)하십시오.
 
 ---
 
-이 규칙들을 따라 개발하면 일관성 있고 유지보수하기 쉬운 Godot 프로젝트를 만들 수 있습니다! 🎮 
+이 규칙들을 준수하여 Godot 4.5 기반의 고품질 3D SRPG를 완성해 봅시다! 🚀

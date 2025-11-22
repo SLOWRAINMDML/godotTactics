@@ -1,4 +1,4 @@
-extends Node2D
+extends Node3D
 class_name Character
 
 signal character_died(character)
@@ -34,10 +34,15 @@ var max_mana: int = 20
 var current_mana: int = 20
 
 # 위치 및 이동
+# 위치 및 이동
 var grid_position: Vector2i = Vector2i.ZERO
 var move_range: int = 10
-var has_moved: bool = false
-var has_acted: bool = false
+# var has_moved: bool = false # Replaced by AP
+# var has_acted: bool = false # Replaced by AP
+
+# Action Points
+var max_ap: int = 2
+var current_ap: int = 2
 
 # 스킬 및 장비
 var learned_skills: Array = []
@@ -50,23 +55,95 @@ var status_effects: Dictionary = {}
 # 진영 (플레이어/적군)
 var is_player_controlled: bool = true
 
-# 시각적 표현 (동적으로 생성되므로 @onready 제거)
-var sprite: Sprite2D
+# 시각적 표현
+var sprite: Sprite3D
 var health_bar: ProgressBar  
-var name_label: Label
+var name_label: Label3D # Changed to Label3D for 3D scene
 
 func _ready():
+	print("Character._ready() called for: ", character_name)
 	# 초기 스탯 계산
 	calculate_current_stats()
-	update_visual()
-	
-	# UI 초기화
-	if health_bar:
-		health_bar.max_value = max_health
-		health_bar.value = current_health
-	
-	if name_label:
+	# Visual setup moved to initialize_character to ensure proper order
+
+func setup_visuals():
+	print("Setting up visuals for: ", character_name)
+	if not sprite:
+		sprite = Sprite3D.new()
+		add_child(sprite)
+		sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		sprite.pixel_size = 0.002 # Much smaller for 1024x1024 texture
+		sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+		sprite.position.y = 1.0 # Character height
+		sprite.modulate = Color.WHITE # Ensure full visibility
+		sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED
+		sprite.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		
+		# Load texture based on ID or Class
+		load_texture()
+		
+		# Verify sprite has texture
+		if sprite.texture:
+			print("Sprite texture set: ", sprite.texture.get_size())
+		else:
+			print("ERROR: Sprite texture is null!")
+		
+		print("Sprite created and texture loaded")
+
+	if not name_label:
+		name_label = Label3D.new()
+		add_child(name_label)
+		name_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		name_label.position.y = 3.0 # Higher above sprite
 		name_label.text = character_name
+		name_label.font_size = 48 # Larger font
+		name_label.modulate = Color.WHITE
+		name_label.outline_modulate = Color.BLACK
+		name_label.outline_size = 4
+		print("Label created for: ", character_name)
+
+func load_texture():
+	var texture_path = "res://assets/textures/sprites/"
+	var file_name = ""
+	
+	# Map IDs/Classes to filenames
+	match character_id:
+		"kodama": file_name = "kodama.png"
+		"nekomata": file_name = "nekomata.png"
+		_:
+			# If no ID match, try class
+			match current_class:
+				"Gunner", "Posu": file_name = "posu.png"
+				"Spearman", "Salsu": file_name = "salsu.png"
+				"Archer", "Gungsu": file_name = "gungsu.png"
+				_: file_name = "posu.png" # Default
+	
+	if file_name != "":
+		var full_path = texture_path + file_name
+		print("Attempting to load texture: ", full_path)
+		
+		# Try ResourceLoader first
+		if ResourceLoader.exists(full_path):
+			var loaded_texture = ResourceLoader.load(full_path)
+			if loaded_texture:
+				sprite.texture = loaded_texture
+				print("Texture loaded via ResourceLoader: ", full_path)
+				return
+			else:
+				print("ResourceLoader returned null for: ", full_path)
+		
+		# Fallback: Try direct Image loading
+		if FileAccess.file_exists(full_path):
+			var img = Image.new()
+			var err = img.load(full_path)
+			if err == OK:
+				var tex = ImageTexture.create_from_image(img)
+				sprite.texture = tex
+				print("Texture loaded via Image: ", full_path, " size: ", img.get_size())
+			else:
+				print("Failed to load image, error: ", err)
+		else:
+			print("Texture file not found: ", full_path)
 
 # 캐릭터 데이터로 초기화
 func initialize_character(data: Dictionary):
@@ -93,11 +170,13 @@ func initialize_character(data: Dictionary):
 		print("DEBUG: ", character_name, "의 grid_position 설정됨: ", grid_position)
 	
 	# 턴 상태 초기화
-	has_moved = false
-	has_acted = false
+	current_ap = max_ap
 	
 	calculate_current_stats()
 	calculate_health_mana()
+	
+	# Visual update
+	setup_visuals()
 	update_visual()
 	
 	print(character_name, " 캐릭터가 초기화되었습니다. 위치: ", grid_position)
@@ -106,14 +185,23 @@ func calculate_current_stats():
 	current_stats = base_stats.duplicate()
 	
 	# 클래스 보너스 적용
-	var class_data = GameData.CLASSES[current_class]
-	stat_growth = class_data["stat_growth"]
+	if GameData.CLASSES.has(current_class):
+		var class_data = GameData.CLASSES[current_class]
+		stat_growth = class_data["stat_growth"]
 	
 	# 레벨에 따른 스탯 증가 (성장률 기반)
 	for stat in base_stats:
 		var growth = stat_growth.get(stat, 0.5)
 		var level_bonus = int((level - 1) * growth * 2)  # 레벨당 평균 2 증가
 		current_stats[stat] = base_stats[stat] + level_bonus
+	
+	# Calculate Max AP based on DEX
+	# Default 2. DEX 15+ -> 3, DEX 25+ -> 4
+	max_ap = 2
+	if current_stats["DEX"] >= 25:
+		max_ap = 4
+	elif current_stats["DEX"] >= 15:
+		max_ap = 3
 
 func calculate_health_mana():
 	# 체력과 마나 계산
@@ -141,14 +229,16 @@ func level_up():
 	check_new_skills()
 	
 	print(character_name, " 레벨업! 레벨 ", level)
+	update_visual()
 
 func check_new_skills():
-	var class_data = GameData.CLASSES[current_class]
-	for skill in class_data["skills"]:
-		if not skill in learned_skills:
-			# 레벨이나 특정 조건을 만족하면 스킬 학습
-			if level >= 5 or randf() < 0.3:  # 30% 확률 또는 레벨 5 이상
-				learn_skill(skill)
+	if GameData.CLASSES.has(current_class):
+		var class_data = GameData.CLASSES[current_class]
+		for skill in class_data["skills"]:
+			if not skill in learned_skills:
+				# 레벨이나 특정 조건을 만족하면 스킬 학습
+				if level >= 5 or randf() < 0.3:  # 30% 확률 또는 레벨 5 이상
+					learn_skill(skill)
 
 func learn_skill(skill_name: String):
 	if not skill_name in learned_skills:
@@ -176,15 +266,19 @@ func change_class(new_class: String):
 	current_class = new_class
 	
 	# 새로운 클래스의 스킬들을 학습 가능 목록에 추가
-	var class_data = GameData.CLASSES[new_class]
-	for skill in class_data["skills"]:
-		if not skill in learned_skills:
-			learned_skills.append(skill)
-			print(character_name, "이(가) 클래스 체인지로 ", skill, " 스킬을 습득했습니다!")
+	if GameData.CLASSES.has(new_class):
+		var class_data = GameData.CLASSES[new_class]
+		for skill in class_data["skills"]:
+			if not skill in learned_skills:
+				learned_skills.append(skill)
+				print(character_name, "이(가) 클래스 체인지로 ", skill, " 스킬을 습득했습니다!")
 	
 	# 스탯 재계산
 	calculate_current_stats()
 	calculate_health_mana()
+	
+	# Update texture for new class
+	load_texture()
 	
 	emit_signal("class_changed", self, new_class)
 	print(character_name, "이(가) ", old_class, "에서 ", new_class, "로 전직했습니다!")
@@ -203,8 +297,11 @@ func take_damage(damage: int, damage_type: String = "Physical"):
 	
 	emit_signal("health_changed", self, current_health, max_health)
 	
-	if health_bar:
-		health_bar.value = current_health
+	# Visual feedback (flash red)
+	if sprite:
+		sprite.modulate = Color(1, 0, 0)
+		var tween = create_tween()
+		tween.tween_property(sprite, "modulate", Color(1, 1, 1), 0.3)
 	
 	print(character_name, "이(가) ", actual_damage, " 데미지를 받았습니다. (", current_health, "/", max_health, ")")
 	
@@ -219,8 +316,12 @@ func heal(amount: int):
 	var healed_amount = current_health - old_health
 	if healed_amount > 0:
 		emit_signal("health_changed", self, current_health, max_health)
-		if health_bar:
-			health_bar.value = current_health
+		# Visual feedback (flash green)
+		if sprite:
+			sprite.modulate = Color(0, 1, 0)
+			var tween = create_tween()
+			tween.tween_property(sprite, "modulate", Color(1, 1, 1), 0.3)
+			
 		print(character_name, "이(가) ", healed_amount, " 체력을 회복했습니다.")
 
 # 사망 처리
@@ -228,6 +329,7 @@ func die():
 	print(character_name, "이(가) 쓰러졌습니다...")
 	emit_signal("character_died", self)
 	# 시각적 효과나 애니메이션 추가 가능
+	queue_free()
 
 # 스킬 사용
 func use_skill(skill_name: String, target_position: Vector2i, battle_grid) -> bool:
@@ -235,7 +337,11 @@ func use_skill(skill_name: String, target_position: Vector2i, battle_grid) -> bo
 		print(character_name, "은(는) ", skill_name, " 스킬을 모릅니다.")
 		return false
 	
-	var skill_data = GameData.SKILLS[skill_name]
+	var skill_data = GameData.SKILLS.get(skill_name)
+	if not skill_data:
+		print("스킬 데이터 없음: ", skill_name)
+		return false
+
 	var mana_cost = skill_data.get("mana_cost", 0)
 	
 	if current_mana < mana_cost:
@@ -254,25 +360,26 @@ func use_skill(skill_name: String, target_position: Vector2i, battle_grid) -> bo
 	# 스킬 효과 적용
 	apply_skill_effect(skill_name, target_position, battle_grid)
 	
-	has_acted = true
+	current_ap -= 1
+	print("Action used. Remaining AP: ", current_ap)
 	return true
 
 func apply_skill_effect(skill_name: String, target_position: Vector2i, battle_grid):
-	var skill_data = GameData.SKILLS[skill_name]
-	var terrain_name = battle_grid.get_terrain_at_position(target_position)
+	var skill_data = GameData.SKILLS.get(skill_name)
+	# var terrain_name = battle_grid.get_terrain_at_position(target_position)
 	
 	print(character_name, "이(가) ", skill_name, " 스킬을 사용했습니다!")
 	
 	# 지형 변화 효과
-	if skill_data["effect"] == "CreateBurningGround":
+	if skill_data and skill_data.get("effect") == "CreateBurningGround":
 		battle_grid.change_terrain(target_position, "BurningGround")
 
 # 이동
 func move_to(new_position: Vector2i, battle_grid) -> bool:
 	print(character_name, " 이동 시도: ", grid_position, " -> ", new_position)
 	
-	if has_moved:
-		print("이미 이동했습니다!")
+	if current_ap < 1:
+		print("AP가 부족합니다!")
 		return false
 	
 	var reachable_tiles = battle_grid.get_reachable_tiles(grid_position, move_range)
@@ -283,25 +390,23 @@ func move_to(new_position: Vector2i, battle_grid) -> bool:
 	
 	var old_position = grid_position
 	grid_position = new_position
-	has_moved = true
+	current_ap -= 1
+	print("Move used. Remaining AP: ", current_ap)
 	
-	# 시각적 이동 (높이 고려)
-	var world_pos = battle_grid.grid_to_world(grid_position)
-	var height = battle_grid.get_height_at_position(grid_position)
+	# 시각적 이동 (3D)
+	var world_pos: Vector3 = battle_grid.grid_to_world(grid_position)
 	
-	var final_pos = battle_grid.position + world_pos
-	final_pos.y -= height * 15
-	position = final_pos
-	
-	print("새로운 월드 위치: ", position, " (높이: ", height, ")")
+	# Smooth movement using Tween
+	var tween = create_tween()
+	tween.tween_property(self, "position", world_pos, 0.5).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	
 	print(character_name, "이(가) ", old_position, "에서 ", new_position, "로 이동했습니다.")
 	return true
 
-# 턴 종료 시 리셋
-func end_turn():
-	has_moved = false
-	has_acted = false
+# 턴 시작 시 리셋 (GameManager에서 호출)
+func start_turn():
+	current_ap = max_ap
+	print(character_name, " Turn Start! AP: ", current_ap)
 	
 	# 상태이상 처리
 	process_status_effects()
@@ -319,8 +424,6 @@ func add_status_effect(effect_name: String, duration: int = 3):
 	print(character_name, "에게 ", effect_name, " 효과가 적용되었습니다.")
 
 func update_visual():
-	# 캐릭터의 시각적 표현 업데이트
-	# 이미 BattleScene에서 시각적 요소가 생성되므로 여기서는 라벨만 업데이트
 	if name_label:
 		name_label.text = character_name + " Lv." + str(level)
 
@@ -333,4 +436,4 @@ func improve_aptitude(weapon_type: String):
 	if current_index < grades.size() - 1 and randf() < 0.1:  # 10% 확률
 		var new_grade = grades[current_index + 1]
 		aptitudes[weapon_type] = new_grade
-		print(character_name, "의 ", weapon_type, " 적성이 ", new_grade, "로 향상되었습니다!") 
+		print(character_name, "의 ", weapon_type, " 적성이 ", new_grade, "로 향상되었습니다!")

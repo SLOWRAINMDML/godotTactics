@@ -11,14 +11,15 @@ config_version=5
 [application]
 
 config/name="Tactics"
-run/main_scene="res://scenes/BattleScene.tscn"
-config/features=PackedStringArray("4.4", "GL Compatibility")
+run/main_scene="res://scenes/maps/BattleMapClean.tscn"
+config/features=PackedStringArray("4.5", "GL Compatibility")
 config/icon="res://icon.svg"
 
 [autoload]
 
 GameData="*res://scripts/GameData.gd"
-GameManager="*res://scripts/GameManager.gd"
+GameManager="*res://scripts/managers/GameManager.gd"
+EnemyManager="*res://scripts/EnemyManager.gd"
 
 [rendering]
 

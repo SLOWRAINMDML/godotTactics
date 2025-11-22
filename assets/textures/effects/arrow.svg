@@ -1,0 +1,6 @@
+<svg width="64" height="64" xmlns="http://www.w3.org/2000/svg" transform="rotate(45)">
+ <line x1="10" y1="32" x2="54" y2="32" stroke="brown" stroke-width="3" />
+ <polygon points="54,32 44,28 44,36" fill="gray" />
+ <line x1="10" y1="32" x2="15" y2="28" stroke="white" stroke-width="1" />
+ <line x1="10" y1="32" x2="15" y2="36" stroke="white" stroke-width="1" />
+</svg>

@@ -41,41 +41,6 @@ func find_available_classes():
 	if not target_character:
 		return
 	
-	var character_data = {
-		"class": target_character.current_class,
-		"aptitude": target_character.aptitudes,
-		"level": target_character.level
-	}
-	
-	# 모든 클래스 확인
-	for class_name in GameData.CLASSES:
-		if class_name != target_character.current_class:
-			if GameData.can_class_change(character_data, class_name):
-				available_classes.append(class_name)
-				available_classes_list.add_item(class_name)
-	
-	if available_classes.size() == 0:
-		available_classes_list.add_item("전직 가능한 클래스가 없습니다")
-		available_classes_list.set_item_disabled(0, true)
-		confirm_button.disabled = true
-	else:
-		confirm_button.disabled = false
-
-func _on_class_selected(index: int):
-	if index >= 0 and index < available_classes.size():
-		var selected_class = available_classes[index]
-		show_class_details(selected_class)
-
-func show_class_details(class_name: String):
-	var class_data = GameData.CLASSES[class_name]
-	
-	var details = "[b]%s[/b]\n\n" % class_name
-	details += "[color=yellow]무기:[/color] %s\n\n" % ", ".join(class_data["weapons"])
-	details += "[color=green]스킬:[/color] %s\n\n" % ", ".join(class_data["skills"])
-	
-	# 필요 적성 표시
-	if class_data["aptitude"].size() > 0:
-		details += "[color=orange]필요 적성:[/color]\n"
 		for aptitude in class_data["aptitude"]:
 			var required_grade = class_data["aptitude"][aptitude]
 			var current_grade = target_character.aptitudes.get(aptitude, "D")
